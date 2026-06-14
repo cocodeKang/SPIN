@@ -1,1 +1,1601 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>실시간 돌림판 - Firestore 저장형</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: rgba(255, 255, 255, 0.92);
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d9e2ef;
+      --primary: #4f46e5;
+      --primary2: #7c3aed;
+      --danger: #ef4444;
+      --success: #16a34a;
+      --warning: #f59e0b;
+      --shadow: 0 18px 50px rgba(20, 31, 55, 0.12);
+      --radius: 22px;
+    }
 
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 4%, rgba(79, 70, 229, 0.16), transparent 30%),
+        radial-gradient(circle at 95% 12%, rgba(236, 72, 153, 0.15), transparent 32%),
+        linear-gradient(135deg, #f8fbff 0%, #edf2ff 48%, #fff7ed 100%);
+      min-height: 100vh;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+
+    button:active { transform: translateY(1px) scale(0.99); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .app {
+      width: min(1480px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 20px 0 42px;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 18px 20px;
+      border: 1px solid rgba(255,255,255,0.78);
+      border-radius: 28px;
+      background: rgba(255,255,255,0.65);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.6rem, 2.8vw, 2.5rem);
+      letter-spacing: -0.05em;
+    }
+
+    .hero p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      line-height: 1.55;
+      word-break: keep-all;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 116px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-weight: 800;
+      font-size: 0.88rem;
+      white-space: nowrap;
+    }
+
+    .status.error {
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+
+    .status.saved {
+      background: #ecfdf3;
+      color: #166534;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 360px minmax(420px, 1fr) 320px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.8);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 18px 18px 12px;
+      border-bottom: 1px solid rgba(217,226,239,0.78);
+    }
+
+    .card-header h2,
+    .card-header h3 {
+      margin: 0;
+      font-size: 1.06rem;
+      letter-spacing: -0.03em;
+    }
+
+    .card-header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .card-body {
+      padding: 16px 18px 18px;
+    }
+
+    label {
+      display: block;
+      font-weight: 800;
+      margin: 14px 0 7px;
+      font-size: 0.92rem;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.45;
+      margin-top: 6px;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 12px 13px;
+      color: var(--ink);
+      outline: none;
+      box-shadow: 0 1px 0 rgba(16,24,40,0.03);
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: rgba(79, 70, 229, 0.75);
+      box-shadow: 0 0 0 4px rgba(79,70,229,0.12);
+    }
+
+    textarea {
+      min-height: 188px;
+      resize: vertical;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 12px 14px;
+      border-radius: 15px;
+      font-weight: 900;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--primary2));
+      box-shadow: 0 10px 24px rgba(79,70,229,0.22);
+      text-decoration: none;
+      min-height: 45px;
+    }
+
+    .btn.secondary {
+      background: #111827;
+      box-shadow: 0 10px 22px rgba(17,24,39,0.14);
+    }
+
+    .btn.light {
+      color: #24304a;
+      background: #eef2ff;
+      box-shadow: none;
+    }
+
+    .btn.success {
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      box-shadow: 0 10px 22px rgba(22,163,74,0.18);
+    }
+
+    .btn.warning {
+      background: linear-gradient(135deg, #f59e0b, #f97316);
+      box-shadow: 0 10px 22px rgba(245,158,11,0.18);
+    }
+
+    .btn.danger {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      box-shadow: 0 10px 22px rgba(239,68,68,0.18);
+    }
+
+    .btn.full { width: 100%; }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 7px;
+      padding: 6px;
+      border-radius: 16px;
+      background: #eef2ff;
+      border: 1px solid #dbe4ff;
+    }
+
+    .segmented input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .segmented label {
+      margin: 0;
+      padding: 10px 7px;
+      border-radius: 12px;
+      text-align: center;
+      font-size: 0.84rem;
+      color: #4b5563;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .segmented input:checked + label {
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--primary2));
+      box-shadow: 0 8px 16px rgba(79,70,229,0.16);
+    }
+
+    .wheel-card {
+      position: sticky;
+      top: 16px;
+    }
+
+    .wheel-stage {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 520px;
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .wheel-stage::before {
+      content: "";
+      position: absolute;
+      width: 460px;
+      height: 460px;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle, rgba(255,255,255,0.9), rgba(255,255,255,0.15) 64%, transparent 66%),
+        conic-gradient(from 180deg, rgba(79,70,229,0.18), rgba(236,72,153,0.18), rgba(34,197,94,0.18), rgba(245,158,11,0.18), rgba(79,70,229,0.18));
+      filter: blur(1px);
+      z-index: 0;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: min(560px, 88vw);
+      aspect-ratio: 1 / 1;
+      border-radius: 999px;
+      padding: 16px;
+      background: rgba(255,255,255,0.66);
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,0.9),
+        0 30px 80px rgba(20,31,55,0.18);
+    }
+
+    #wheelCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 999px;
+    }
+
+    .pointer {
+      position: absolute;
+      z-index: 3;
+      top: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 22px solid transparent;
+      border-right: 22px solid transparent;
+      border-top: 46px solid #111827;
+      filter: drop-shadow(0 8px 8px rgba(17,24,39,0.25));
+    }
+
+    .hub {
+      position: absolute;
+      z-index: 2;
+      width: 96px;
+      height: 96px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: radial-gradient(circle at 32% 28%, #fff, #edf2ff 55%, #c7d2fe);
+      border: 7px solid rgba(255,255,255,0.86);
+      box-shadow: 0 14px 36px rgba(17,24,39,0.22);
+      font-weight: 950;
+      letter-spacing: -0.04em;
+      color: #312e81;
+      text-align: center;
+      line-height: 1.05;
+      user-select: none;
+    }
+
+    .result-box {
+      position: relative;
+      z-index: 1;
+      width: min(640px, 100%);
+      margin: -2px auto 18px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: #111827;
+      color: #fff;
+      text-align: center;
+      font-weight: 900;
+      font-size: clamp(1rem, 2vw, 1.3rem);
+      box-shadow: 0 14px 30px rgba(17,24,39,0.22);
+      word-break: keep-all;
+    }
+
+    .spin-controls {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1.3fr 1fr 1fr;
+      gap: 10px;
+      padding: 0 18px 18px;
+    }
+
+    .items-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-height: 170px;
+      overflow: auto;
+      padding: 8px 2px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid var(--line);
+      font-size: 0.86rem;
+      font-weight: 800;
+    }
+
+    .chip .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      display: inline-block;
+      background: #ddd;
+    }
+
+    .item-editor {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      max-height: 300px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .item-row {
+      display: grid;
+      grid-template-columns: 28px 1fr 40px;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .item-no {
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .mini-delete {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      color: #b91c1c;
+      background: #fef2f2;
+      font-weight: 950;
+    }
+
+    .saved-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .saved-card {
+      display: grid;
+      gap: 5px;
+      width: 100%;
+      text-align: left;
+      padding: 12px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      box-shadow: 0 4px 14px rgba(17,24,39,0.04);
+    }
+
+    .saved-card.active {
+      border-color: rgba(79,70,229,0.65);
+      box-shadow: 0 0 0 4px rgba(79,70,229,0.09);
+    }
+
+    .saved-title {
+      font-weight: 950;
+      letter-spacing: -0.02em;
+    }
+
+    .saved-meta {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .history {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      max-height: 230px;
+      overflow: auto;
+    }
+
+    .history li {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #eef2f7;
+      font-size: 0.88rem;
+    }
+
+    .workspace {
+      word-break: break-all;
+      color: #4f46e5;
+      font-size: 0.82rem;
+      line-height: 1.42;
+      padding: 10px;
+      border-radius: 14px;
+      background: #eef2ff;
+      border: 1px solid #dbe4ff;
+    }
+
+    .empty {
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px dashed #cbd5e1;
+      color: var(--muted);
+      text-align: center;
+      background: rgba(255,255,255,0.6);
+      line-height: 1.5;
+    }
+
+    .mobile-only { display: none; }
+
+    @media (max-width: 1100px) {
+      .layout {
+        grid-template-columns: minmax(300px, 360px) 1fr;
+      }
+
+      .side-right {
+        grid-column: 1 / -1;
+      }
+
+      .side-right .card-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        width: min(100% - 20px, 560px);
+        padding: 12px 0 28px;
+      }
+
+      .hero {
+        display: grid;
+        padding: 15px;
+        border-radius: 22px;
+      }
+
+      .layout {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .wheel-card {
+        position: relative;
+        top: auto;
+        order: -1;
+        width: 100%;
+      }
+
+      .wheel-stage {
+        min-height: auto;
+        padding: 14px 10px 8px;
+      }
+
+      .wheel-stage::before {
+        width: 320px;
+        height: 320px;
+      }
+
+      .canvas-wrap {
+        width: min(100%, 430px);
+        padding: 11px;
+      }
+
+      .pointer {
+        border-left-width: 16px;
+        border-right-width: 16px;
+        border-top-width: 34px;
+      }
+
+      .hub {
+        width: 74px;
+        height: 74px;
+        border-width: 5px;
+        font-size: 0.82rem;
+      }
+
+      .spin-controls {
+        grid-template-columns: 1fr;
+        padding: 0 14px 14px;
+      }
+
+      .result-box {
+        margin: 8px auto 12px;
+        border-radius: 15px;
+      }
+
+      .row,
+      .row-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .segmented {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .side-right .card-body {
+        display: block;
+      }
+
+      .mobile-only { display: inline; }
+      .pc-only { display: none; }
+
+      .card-header,
+      .card-body {
+        padding-left: 15px;
+        padding-right: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="hero">
+      <div>
+        <h1>실시간 돌림판</h1>
+        <p>
+          PC는 왼쪽 입력 · 가운데 돌림판 · 오른쪽 저장목록 구조,
+          모바일은 돌림판을 먼저 크게 보고 아래에서 바로 수정하는 구조입니다.
+        </p>
+      </div>
+      <div id="saveStatus" class="status">연결 준비</div>
+    </header>
+
+    <section class="layout">
+      <aside class="card side-left">
+        <div class="card-header">
+          <h2>돌림판 편집</h2>
+          <p>입력하는 즉시 Firestore에 저장되고, 같은 작업공간을 연 화면에 실시간 반영됩니다.</p>
+        </div>
+
+        <div class="card-body">
+          <label for="wheelTitle">제목</label>
+          <input id="wheelTitle" type="text" placeholder="예: 할일 돌림판" />
+
+          <label>입력 구분 모드</label>
+          <div class="segmented" role="radiogroup" aria-label="입력 구분 모드">
+            <input id="modeAuto" name="splitMode" type="radio" value="auto" checked />
+            <label for="modeAuto">자동</label>
+
+            <input id="modeSpace" name="splitMode" type="radio" value="space" />
+            <label for="modeSpace">띄어쓰기</label>
+
+            <input id="modeLine" name="splitMode" type="radio" value="line" />
+            <label for="modeLine">단락</label>
+
+            <input id="modeComma" name="splitMode" type="radio" value="comma" />
+            <label for="modeComma">쉼표</label>
+          </div>
+
+          <label for="rawItems">선택지 입력</label>
+          <textarea id="rawItems" placeholder="예: 강대희 김한나&#10;또는&#10;강대희&#10;김한나"></textarea>
+          <div class="hint">
+            자동 모드는 줄바꿈이 있으면 단락 기준, 줄바꿈이 없으면 띄어쓰기 기준으로 나눕니다.
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="targetCount">개수 맞추기</label>
+              <input id="targetCount" type="number" min="2" max="100" value="2" />
+            </div>
+            <div style="display:grid; align-items:end;">
+              <button id="applyCountBtn" class="btn light" type="button">개수 적용</button>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:10px;">
+            <button id="addBlankBtn" class="btn light" type="button">+ 1개 추가</button>
+            <button id="shuffleColorBtn" class="btn light" type="button">색상 섞기</button>
+          </div>
+
+          <label>결과 처리 방식</label>
+          <div class="segmented" style="grid-template-columns:1fr 1fr;" role="radiogroup" aria-label="결과 처리 방식">
+            <input id="keepMode" name="resultMode" type="radio" value="keep" checked />
+            <label for="keepMode">결과 유지</label>
+
+            <input id="removeMode" name="resultMode" type="radio" value="remove" />
+            <label for="removeMode">결과 삭제</label>
+          </div>
+
+          <div class="hint">
+            “결과 삭제”는 당첨된 항목을 자동으로 빼고 저장합니다. 돌리는 중에도 입력창과 항목 수정이 가능합니다.
+          </div>
+
+          <label>현재 선택지 <span id="itemCountText">0개</span></label>
+          <div id="itemsPreview" class="items-preview"></div>
+
+          <label>개별 수정</label>
+          <div id="itemEditor" class="item-editor"></div>
+        </div>
+      </aside>
+
+      <section class="card wheel-card">
+        <div class="card-header">
+          <h2 id="activeTitleLabel">할일 돌림판</h2>
+          <p>
+            <span class="pc-only">가운데 버튼을 누르거나 캔버스를 클릭해서 돌리세요.</span>
+            <span class="mobile-only">돌림판을 터치하거나 버튼을 눌러 돌리세요.</span>
+          </p>
+        </div>
+
+        <div class="wheel-stage">
+          <div class="canvas-wrap">
+            <div class="pointer" aria-hidden="true"></div>
+            <canvas id="wheelCanvas" width="900" height="900" aria-label="돌림판"></canvas>
+            <div class="hub">SPIN<br />WHEEL</div>
+          </div>
+        </div>
+
+        <div id="resultBox" class="result-box">결과가 여기에 표시됩니다</div>
+
+        <div class="spin-controls">
+          <button id="spinBtn" class="btn full" type="button">돌림판 돌리기</button>
+          <button id="stopEditBtn" class="btn light full" type="button">수정 반영</button>
+          <button id="resetResultBtn" class="btn secondary full" type="button">결과 초기화</button>
+        </div>
+      </section>
+
+      <aside class="side-right">
+        <section class="card">
+          <div class="card-header">
+            <h3>저장된 돌림판</h3>
+            <p>처음 실행하면 기본으로 “할일 돌림판”과 “이름 추첨 돌림판”이 생성됩니다.</p>
+          </div>
+
+          <div class="card-body">
+            <div>
+              <button id="newWheelBtn" class="btn success full" type="button">+ 새 돌림판 만들기</button>
+              <div id="savedList" class="saved-list" style="margin-top:12px;"></div>
+            </div>
+
+            <div>
+              <label>작업공간 공유</label>
+              <div id="workspaceBox" class="workspace"></div>
+              <div class="row" style="margin-top:10px;">
+                <button id="copyLinkBtn" class="btn light" type="button">공유 링크 복사</button>
+                <button id="newWorkspaceBtn" class="btn warning" type="button">새 작업공간</button>
+              </div>
+
+              <label>결과 기록</label>
+              <ul id="historyList" class="history"></ul>
+
+              <button id="deleteWheelBtn" class="btn danger full" type="button" style="margin-top:14px;">
+                현재 돌림판 삭제
+              </button>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      doc,
+      setDoc,
+      addDoc,
+      deleteDoc,
+      onSnapshot,
+      updateDoc,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAbtiz-KQgRTSleOP8vD5mWeFBLpaRkr3k",
+      authDomain: "spin-99a7b.firebaseapp.com",
+      projectId: "spin-99a7b",
+      storageBucket: "spin-99a7b.firebasestorage.app",
+      messagingSenderId: "1065139981291",
+      appId: "1:1065139981291:web:c0a038cf0503be8773a7ae"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const palette = [
+      "#f97316", "#84cc16", "#06b6d4", "#8b5cf6", "#ec4899", "#14b8a6",
+      "#f43f5e", "#22c55e", "#3b82f6", "#eab308", "#a855f7", "#10b981",
+      "#fb7185", "#38bdf8", "#facc15", "#c084fc", "#2dd4bf", "#fb923c",
+      "#60a5fa", "#a3e635", "#f472b6", "#34d399", "#818cf8", "#f59e0b"
+    ];
+
+    const $ = (id) => document.getElementById(id);
+
+    const els = {
+      canvas: $("wheelCanvas"),
+      saveStatus: $("saveStatus"),
+      title: $("wheelTitle"),
+      raw: $("rawItems"),
+      targetCount: $("targetCount"),
+      applyCount: $("applyCountBtn"),
+      addBlank: $("addBlankBtn"),
+      shuffleColor: $("shuffleColorBtn"),
+      itemsPreview: $("itemsPreview"),
+      itemEditor: $("itemEditor"),
+      itemCountText: $("itemCountText"),
+      activeTitleLabel: $("activeTitleLabel"),
+      resultBox: $("resultBox"),
+      spinBtn: $("spinBtn"),
+      resetResult: $("resetResultBtn"),
+      stopEdit: $("stopEditBtn"),
+      savedList: $("savedList"),
+      newWheel: $("newWheelBtn"),
+      deleteWheel: $("deleteWheelBtn"),
+      historyList: $("historyList"),
+      workspaceBox: $("workspaceBox"),
+      copyLink: $("copyLinkBtn"),
+      newWorkspace: $("newWorkspaceBtn")
+    };
+
+    const ctx = els.canvas.getContext("2d");
+    const TWO_PI = Math.PI * 2;
+
+    const state = {
+      workspaceId: getWorkspaceId(),
+      wheels: [],
+      activeWheelId: localStorage.getItem("spin.activeWheelId") || "",
+      rotation: 0,
+      isSpinning: false,
+      saveTimer: null,
+      creatingDefaults: false,
+      colorOffset: 0
+    };
+
+    els.workspaceBox.textContent = makeShareUrl(state.workspaceId);
+
+    function randomId(size = 12) {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+      let out = "";
+      for (let i = 0; i < size; i++) out += chars[Math.floor(Math.random() * chars.length)];
+      return out;
+    }
+
+    function getWorkspaceId() {
+      const params = new URLSearchParams(location.hash.replace(/^#/, ""));
+      const fromHash = params.get("workspace");
+      if (fromHash) {
+        localStorage.setItem("spin.workspaceId", fromHash);
+        return fromHash;
+      }
+
+      let saved = localStorage.getItem("spin.workspaceId");
+      if (!saved) {
+        saved = randomId(16);
+        localStorage.setItem("spin.workspaceId", saved);
+      }
+
+      history.replaceState(null, "", "#workspace=" + encodeURIComponent(saved));
+      return saved;
+    }
+
+    function makeShareUrl(workspaceId) {
+      return location.origin + location.pathname + "#workspace=" + encodeURIComponent(workspaceId);
+    }
+
+    const wheelsRef = () => collection(db, "spinWorkspaces", state.workspaceId, "wheels");
+    const wheelRef = (id) => doc(db, "spinWorkspaces", state.workspaceId, "wheels", id);
+
+    function cleanItems(items) {
+      return (items || [])
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+        .slice(0, 100);
+    }
+
+    function parseItems(raw, mode) {
+      const value = String(raw || "").trim();
+      if (!value) return [];
+
+      if (mode === "line") {
+        return value.split(/\n+/).map(v => v.trim()).filter(Boolean);
+      }
+
+      if (mode === "space") {
+        return value.split(/\s+/).map(v => v.trim()).filter(Boolean);
+      }
+
+      if (mode === "comma") {
+        return value.split(/[,，、]+/).map(v => v.trim()).filter(Boolean);
+      }
+
+      if (value.includes("\n")) {
+        return value.split(/\n+/).map(v => v.trim()).filter(Boolean);
+      }
+
+      if (value.includes(",") || value.includes("，") || value.includes("、")) {
+        return value.split(/[,，、]+/).map(v => v.trim()).filter(Boolean);
+      }
+
+      return value.split(/\s+/).map(v => v.trim()).filter(Boolean);
+    }
+
+    function itemsToRaw(items) {
+      return cleanItems(items).join("\n");
+    }
+
+    function activeWheel() {
+      return state.wheels.find(w => w.id === state.activeWheelId) || state.wheels[0] || null;
+    }
+
+    function normalizeWheel(docId, data) {
+      const splitMode = data.splitMode || "auto";
+      const rawText = data.rawText || itemsToRaw(data.items || []);
+      const items = cleanItems(data.items?.length ? data.items : parseItems(rawText, splitMode));
+
+      return {
+        id: docId,
+        title: data.title || "새 돌림판",
+        rawText,
+        splitMode,
+        resultMode: data.resultMode || "keep",
+        items,
+        lastResult: data.lastResult || "",
+        history: Array.isArray(data.history) ? data.history.slice(0, 30) : [],
+        colorOffset: Number(data.colorOffset || 0),
+        createdAt: data.createdAt || null,
+        updatedAt: data.updatedAt || null
+      };
+    }
+
+    function setStatus(text, type = "") {
+      els.saveStatus.textContent = text;
+      els.saveStatus.className = "status" + (type ? " " + type : "");
+    }
+
+    async function ensureDefaults() {
+      if (state.creatingDefaults) return;
+      state.creatingDefaults = true;
+
+      const defaults = [
+        {
+          id: "todo",
+          title: "할일 돌림판",
+          rawText: "청소하기\n전화하기\n자료 정리\n문서 작성\n잠깐 쉬기",
+          splitMode: "line",
+          resultMode: "remove",
+          items: ["청소하기", "전화하기", "자료 정리", "문서 작성", "잠깐 쉬기"],
+          colorOffset: 0
+        },
+        {
+          id: "names",
+          title: "이름 추첨 돌림판",
+          rawText: "강대희\n김한나\n참가자 3\n참가자 4",
+          splitMode: "line",
+          resultMode: "keep",
+          items: ["강대희", "김한나", "참가자 3", "참가자 4"],
+          colorOffset: 6
+        }
+      ];
+
+      try {
+        await Promise.all(defaults.map((item) => setDoc(wheelRef(item.id), {
+          ...item,
+          history: [],
+          lastResult: "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true })));
+      } catch (error) {
+        setStatus("기본 생성 실패", "error");
+        console.error(error);
+      } finally {
+        state.creatingDefaults = false;
+      }
+    }
+
+    function listenWheels() {
+      setStatus("Firestore 연결 중");
+
+      onSnapshot(wheelsRef(), (snapshot) => {
+        state.wheels = snapshot.docs
+          .map((d) => normalizeWheel(d.id, d.data()))
+          .sort((a, b) => {
+            if (a.id === "todo") return -1;
+            if (b.id === "todo") return 1;
+            return a.title.localeCompare(b.title, "ko");
+          });
+
+        if (snapshot.empty) {
+          ensureDefaults();
+          return;
+        }
+
+        if (!state.wheels.some(w => w.id === state.activeWheelId)) {
+          state.activeWheelId = state.wheels[0]?.id || "";
+          localStorage.setItem("spin.activeWheelId", state.activeWheelId);
+        }
+
+        const current = activeWheel();
+        if (current) {
+          state.colorOffset = current.colorOffset || 0;
+        }
+
+        renderAll();
+        setStatus("실시간 연결됨", "saved");
+      }, (error) => {
+        console.error(error);
+        setStatus("권한/연결 오류", "error");
+        els.resultBox.textContent = "Firestore 권한 오류입니다. 보안 규칙과 데이터베이스 생성 여부를 확인하세요.";
+      });
+    }
+
+    function renderAll() {
+      renderSavedList();
+      syncEditorFromActive();
+      renderWheel();
+      renderHistory();
+    }
+
+    function syncEditorFromActive() {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      els.activeTitleLabel.textContent = wheel.title;
+      document.title = wheel.title + " - 실시간 돌림판";
+
+      if (document.activeElement !== els.title) els.title.value = wheel.title;
+      if (document.activeElement !== els.raw) els.raw.value = wheel.rawText || itemsToRaw(wheel.items);
+
+      document.querySelectorAll("input[name='splitMode']").forEach(input => {
+        input.checked = input.value === wheel.splitMode;
+      });
+
+      document.querySelectorAll("input[name='resultMode']").forEach(input => {
+        input.checked = input.value === wheel.resultMode;
+      });
+
+      els.targetCount.value = Math.max(2, wheel.items.length || 2);
+      els.resultBox.textContent = wheel.lastResult ? "최근 결과: " + wheel.lastResult : "결과가 여기에 표시됩니다";
+
+      renderItemsPreview(wheel);
+      renderItemEditor(wheel);
+    }
+
+    function renderSavedList() {
+      if (!state.wheels.length) {
+        els.savedList.innerHTML = `<div class="empty">저장된 돌림판을 불러오는 중입니다.</div>`;
+        return;
+      }
+
+      els.savedList.innerHTML = state.wheels.map(wheel => `
+        <button class="saved-card ${wheel.id === state.activeWheelId ? "active" : ""}" data-id="${escapeHTML(wheel.id)}" type="button">
+          <span class="saved-title">${escapeHTML(wheel.title)}</span>
+          <span class="saved-meta">${wheel.items.length}개 · ${wheel.resultMode === "remove" ? "결과 삭제" : "결과 유지"}</span>
+        </button>
+      `).join("");
+
+      els.savedList.querySelectorAll(".saved-card").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.activeWheelId = btn.dataset.id;
+          localStorage.setItem("spin.activeWheelId", state.activeWheelId);
+          state.rotation = 0;
+          renderAll();
+        });
+      });
+    }
+
+    function renderItemsPreview(wheel) {
+      els.itemCountText.textContent = `${wheel.items.length}개`;
+      if (!wheel.items.length) {
+        els.itemsPreview.innerHTML = `<div class="empty">선택지를 입력해 주세요.</div>`;
+        return;
+      }
+
+      els.itemsPreview.innerHTML = wheel.items.map((item, index) => `
+        <span class="chip">
+          <span class="dot" style="background:${getColor(index, wheel.colorOffset)}"></span>
+          ${escapeHTML(item)}
+        </span>
+      `).join("");
+    }
+
+    function renderItemEditor(wheel) {
+      if (!wheel.items.length) {
+        els.itemEditor.innerHTML = `<div class="empty">항목이 생기면 여기에서 개별 수정할 수 있습니다.</div>`;
+        return;
+      }
+
+      els.itemEditor.innerHTML = wheel.items.map((item, index) => `
+        <div class="item-row">
+          <div class="item-no">${index + 1}</div>
+          <input type="text" value="${escapeAttr(item)}" data-index="${index}" aria-label="${index + 1}번 항목" />
+          <button class="mini-delete" type="button" data-index="${index}" aria-label="${index + 1}번 삭제">×</button>
+        </div>
+      `).join("");
+
+      els.itemEditor.querySelectorAll("input").forEach(input => {
+        input.addEventListener("input", () => {
+          const wheel = activeWheel();
+          if (!wheel) return;
+
+          const index = Number(input.dataset.index);
+          const items = [...wheel.items];
+          items[index] = input.value;
+          updateItemsLocal(items);
+          scheduleSave();
+        });
+      });
+
+      els.itemEditor.querySelectorAll(".mini-delete").forEach(button => {
+        button.addEventListener("click", () => {
+          const wheel = activeWheel();
+          if (!wheel) return;
+
+          const index = Number(button.dataset.index);
+          const items = wheel.items.filter((_, i) => i !== index);
+          updateItemsLocal(items);
+          saveActiveNow();
+        });
+      });
+    }
+
+    function updateItemsLocal(items) {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      wheel.items = cleanItems(items);
+      wheel.rawText = itemsToRaw(wheel.items);
+
+      if (document.activeElement !== els.raw) {
+        els.raw.value = wheel.rawText;
+      }
+
+      renderItemsPreview(wheel);
+      renderWheel();
+    }
+
+    function getColor(index, offset = 0) {
+      return palette[(index + offset) % palette.length];
+    }
+
+    function renderWheel() {
+      const wheel = activeWheel();
+      const size = 900;
+      const center = size / 2;
+      const radius = size * 0.43;
+
+      ctx.clearRect(0, 0, size, size);
+      ctx.save();
+      ctx.translate(center, center);
+
+      drawOuterRings(radius);
+
+      if (!wheel || wheel.items.length === 0) {
+        drawEmptyWheel(radius);
+        ctx.restore();
+        return;
+      }
+
+      const items = wheel.items;
+      const arc = TWO_PI / items.length;
+
+      for (let i = 0; i < items.length; i++) {
+        const start = state.rotation + i * arc;
+        const end = start + arc;
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, radius, start, end);
+        ctx.closePath();
+        ctx.fillStyle = getColor(i, wheel.colorOffset);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255,255,255,0.72)";
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        drawSegmentText(items[i], start + arc / 2, radius, getColor(i, wheel.colorOffset));
+      }
+
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, TWO_PI);
+      ctx.strokeStyle = "rgba(17,24,39,0.15)";
+      ctx.lineWidth = 12;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawOuterRings(radius) {
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 24, 0, TWO_PI);
+      ctx.fillStyle = "rgba(255,255,255,0.82)";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 15, 0, TWO_PI);
+      ctx.strokeStyle = "rgba(17,24,39,0.08)";
+      ctx.lineWidth = 18;
+      ctx.stroke();
+    }
+
+    function drawEmptyWheel(radius) {
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, TWO_PI);
+      ctx.fillStyle = "#e5e7eb";
+      ctx.fill();
+
+      ctx.fillStyle = "#667085";
+      ctx.font = "bold 42px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("선택지 입력", 0, -10);
+
+      ctx.font = "28px system-ui, sans-serif";
+      ctx.fillText("2개 이상 필요합니다", 0, 38);
+    }
+
+    function drawSegmentText(text, angle, radius, color) {
+      const safe = String(text || "").trim();
+      if (!safe) return;
+
+      ctx.save();
+      ctx.rotate(angle);
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = readableTextColor(color);
+      ctx.font = "800 34px system-ui, -apple-system, 'Noto Sans KR', sans-serif";
+      ctx.shadowColor = "rgba(0,0,0,0.14)";
+      ctx.shadowBlur = 3;
+      ctx.shadowOffsetY = 1;
+
+      const maxWidth = radius * 0.62;
+      const display = trimToWidth(safe, maxWidth);
+      ctx.fillText(display, radius - 34, 0, maxWidth);
+      ctx.restore();
+    }
+
+    function readableTextColor(hex) {
+      const c = hex.replace("#", "");
+      const r = parseInt(c.substring(0, 2), 16);
+      const g = parseInt(c.substring(2, 4), 16);
+      const b = parseInt(c.substring(4, 6), 16);
+      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      return brightness > 154 ? "#111827" : "#ffffff";
+    }
+
+    function trimToWidth(text, maxWidth) {
+      if (ctx.measureText(text).width <= maxWidth) return text;
+      let out = text;
+      while (out.length > 1 && ctx.measureText(out + "…").width > maxWidth) {
+        out = out.slice(0, -1);
+      }
+      return out + "…";
+    }
+
+    function getWinnerIndex(itemsLength) {
+      if (!itemsLength) return -1;
+      const pointerAngle = -Math.PI / 2;
+      const normalized = ((pointerAngle - state.rotation) % TWO_PI + TWO_PI) % TWO_PI;
+      return Math.floor(normalized / (TWO_PI / itemsLength));
+    }
+
+    function easeOutCubic(t) {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function spin() {
+      const wheel = activeWheel();
+      if (!wheel || wheel.items.length < 2) {
+        els.resultBox.textContent = "선택지를 2개 이상 입력해 주세요.";
+        return;
+      }
+
+      if (state.isSpinning) return;
+
+      state.isSpinning = true;
+      els.spinBtn.disabled = true;
+      els.resultBox.textContent = "돌아가는 중… 수정해도 반영됩니다.";
+
+      const start = performance.now();
+      const duration = 4600 + Math.random() * 1300;
+      const startRotation = state.rotation;
+      const totalRotation = TWO_PI * (8 + Math.random() * 6) + Math.random() * TWO_PI;
+
+      function frame(now) {
+        const elapsed = Math.min(1, (now - start) / duration);
+        state.rotation = startRotation + totalRotation * easeOutCubic(elapsed);
+        renderWheel();
+
+        if (elapsed < 1) {
+          requestAnimationFrame(frame);
+          return;
+        }
+
+        state.isSpinning = false;
+        els.spinBtn.disabled = false;
+        finishSpin();
+      }
+
+      requestAnimationFrame(frame);
+    }
+
+    async function finishSpin() {
+      const wheel = activeWheel();
+      if (!wheel || wheel.items.length < 1) return;
+
+      const index = getWinnerIndex(wheel.items.length);
+      const result = wheel.items[index] || wheel.items[0];
+      const newHistory = [
+        { text: result, at: new Date().toLocaleString("ko-KR") },
+        ...(wheel.history || [])
+      ].slice(0, 30);
+
+      els.resultBox.textContent = "결과: " + result;
+
+      try {
+        if (wheel.resultMode === "remove") {
+          const nextItems = wheel.items.filter((_, i) => i !== index);
+          await updateDoc(wheelRef(wheel.id), {
+            items: nextItems,
+            rawText: itemsToRaw(nextItems),
+            lastResult: result,
+            history: newHistory,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          await updateDoc(wheelRef(wheel.id), {
+            lastResult: result,
+            history: newHistory,
+            updatedAt: serverTimestamp()
+          });
+        }
+        setStatus("결과 저장됨", "saved");
+      } catch (error) {
+        console.error(error);
+        setStatus("결과 저장 실패", "error");
+      }
+    }
+
+    function scheduleSave(delay = 500) {
+      clearTimeout(state.saveTimer);
+      setStatus("저장 중");
+      state.saveTimer = setTimeout(saveActiveNow, delay);
+    }
+
+    async function saveActiveNow() {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      const title = els.title.value.trim() || "새 돌림판";
+      const splitMode = getCheckedValue("splitMode");
+      const resultMode = getCheckedValue("resultMode");
+      const rawText = els.raw.value;
+      const items = cleanItems(parseItems(rawText, splitMode));
+
+      Object.assign(wheel, { title, splitMode, resultMode, rawText, items });
+
+      try {
+        await setDoc(wheelRef(wheel.id), {
+          title,
+          splitMode,
+          resultMode,
+          rawText,
+          items,
+          colorOffset: wheel.colorOffset || 0,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        setStatus("자동 저장됨", "saved");
+        renderAll();
+      } catch (error) {
+        console.error(error);
+        setStatus("저장 실패", "error");
+      }
+    }
+
+    function getCheckedValue(name) {
+      return document.querySelector(`input[name="${name}"]:checked`)?.value;
+    }
+
+    function renderHistory() {
+      const wheel = activeWheel();
+      const history = wheel?.history || [];
+      if (!history.length) {
+        els.historyList.innerHTML = `<li><span>아직 결과 기록이 없습니다.</span></li>`;
+        return;
+      }
+
+      els.historyList.innerHTML = history.map(item => `
+        <li>
+          <strong>${escapeHTML(item.text)}</strong>
+          <span>${escapeHTML(item.at || "")}</span>
+        </li>
+      `).join("");
+    }
+
+    function escapeHTML(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function escapeAttr(value) {
+      return escapeHTML(value).replaceAll("\n", " ");
+    }
+
+    els.title.addEventListener("input", () => {
+      const wheel = activeWheel();
+      if (!wheel) return;
+      wheel.title = els.title.value.trim() || "새 돌림판";
+      els.activeTitleLabel.textContent = wheel.title;
+      renderSavedList();
+      scheduleSave();
+    });
+
+    els.raw.addEventListener("input", () => {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      const splitMode = getCheckedValue("splitMode");
+      wheel.rawText = els.raw.value;
+      wheel.splitMode = splitMode;
+      wheel.items = cleanItems(parseItems(wheel.rawText, splitMode));
+
+      renderItemsPreview(wheel);
+      renderItemEditor(wheel);
+      renderWheel();
+      scheduleSave();
+    });
+
+    document.querySelectorAll("input[name='splitMode']").forEach(input => {
+      input.addEventListener("change", () => {
+        const wheel = activeWheel();
+        if (!wheel) return;
+
+        wheel.splitMode = input.value;
+        wheel.items = cleanItems(parseItems(els.raw.value, input.value));
+
+        renderItemsPreview(wheel);
+        renderItemEditor(wheel);
+        renderWheel();
+        scheduleSave(150);
+      });
+    });
+
+    document.querySelectorAll("input[name='resultMode']").forEach(input => {
+      input.addEventListener("change", () => {
+        const wheel = activeWheel();
+        if (!wheel) return;
+        wheel.resultMode = input.value;
+        renderSavedList();
+        scheduleSave(150);
+      });
+    });
+
+    els.applyCount.addEventListener("click", () => {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      const target = Math.max(2, Math.min(100, Number(els.targetCount.value || 2)));
+      let items = [...wheel.items];
+
+      if (items.length < target) {
+        while (items.length < target) {
+          items.push("항목 " + (items.length + 1));
+        }
+      } else if (items.length > target) {
+        items = items.slice(0, target);
+      }
+
+      els.raw.value = itemsToRaw(items);
+      updateItemsLocal(items);
+      scheduleSave(100);
+    });
+
+    els.addBlank.addEventListener("click", () => {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      const items = [...wheel.items, "항목 " + (wheel.items.length + 1)];
+      els.raw.value = itemsToRaw(items);
+      updateItemsLocal(items);
+      scheduleSave(100);
+    });
+
+    els.shuffleColor.addEventListener("click", () => {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      wheel.colorOffset = Math.floor(Math.random() * palette.length);
+      state.colorOffset = wheel.colorOffset;
+      renderWheel();
+      renderItemsPreview(wheel);
+      scheduleSave(100);
+    });
+
+    els.spinBtn.addEventListener("click", spin);
+    els.canvas.addEventListener("click", spin);
+
+    els.stopEdit.addEventListener("click", () => {
+      saveActiveNow();
+      renderWheel();
+    });
+
+    els.resetResult.addEventListener("click", async () => {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      els.resultBox.textContent = "결과가 여기에 표시됩니다";
+
+      try {
+        await updateDoc(wheelRef(wheel.id), {
+          lastResult: "",
+          updatedAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
+    els.newWheel.addEventListener("click", async () => {
+      try {
+        const title = "새 돌림판";
+        const rawText = "항목 1\n항목 2\n항목 3";
+        const ref = await addDoc(wheelsRef(), {
+          title,
+          rawText,
+          splitMode: "line",
+          resultMode: "keep",
+          items: ["항목 1", "항목 2", "항목 3"],
+          history: [],
+          lastResult: "",
+          colorOffset: Math.floor(Math.random() * palette.length),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+
+        state.activeWheelId = ref.id;
+        localStorage.setItem("spin.activeWheelId", ref.id);
+        setStatus("새 돌림판 생성", "saved");
+      } catch (error) {
+        console.error(error);
+        setStatus("생성 실패", "error");
+      }
+    });
+
+    els.deleteWheel.addEventListener("click", async () => {
+      const wheel = activeWheel();
+      if (!wheel) return;
+
+      const ok = confirm(`“${wheel.title}” 돌림판을 삭제할까요?`);
+      if (!ok) return;
+
+      try {
+        await deleteDoc(wheelRef(wheel.id));
+        state.activeWheelId = "";
+        localStorage.removeItem("spin.activeWheelId");
+        setStatus("삭제됨", "saved");
+      } catch (error) {
+        console.error(error);
+        setStatus("삭제 실패", "error");
+      }
+    });
+
+    els.copyLink.addEventListener("click", async () => {
+      const url = makeShareUrl(state.workspaceId);
+      try {
+        await navigator.clipboard.writeText(url);
+        setStatus("링크 복사됨", "saved");
+      } catch {
+        prompt("아래 링크를 복사하세요.", url);
+      }
+    });
+
+    els.newWorkspace.addEventListener("click", () => {
+      const ok = confirm("새 작업공간을 만들까요? 현재 작업공간은 공유 링크로 다시 열 수 있습니다.");
+      if (!ok) return;
+
+      const next = randomId(16);
+      localStorage.setItem("spin.workspaceId", next);
+      localStorage.removeItem("spin.activeWheelId");
+      location.hash = "workspace=" + encodeURIComponent(next);
+      location.reload();
+    });
+
+    window.addEventListener("resize", renderWheel);
+
+    listenWheels();
+    renderWheel();
+  </script>
+</body>
+</html>
